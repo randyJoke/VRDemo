@@ -11,14 +11,14 @@ app.innerHTML = `
       <h1>住宅 3D 第一人称漫游</h1>
       <p>按最新设计 PDF 重做了客厅、餐厨、玄关、卧室、儿童房与书房的家具、材质和灯光。</p>
       <button id="startButton" type="button">进入户型</button>
-      <div class="startTips">W/A/S/D 移动 · 鼠标观察 · Shift 加速 · Space 跳跃 · ESC 暂停</div>
+      <div class="startTips">W/A/S/D 移动 · 鼠标观察 · 滚轮缩放 · 双击复位 · Shift 加速 · Space 跳跃 · ESC 暂停</div>
     </div>
   </div>
   <div id="hud">
     <div id="crosshair" aria-hidden="true"></div>
     <div id="status">未进入漫游</div>
     <div id="roomName">玄关 / 公区</div>
-    <div id="help">W/A/S/D 移动 · 鼠标观察 · Shift 加速 · Space 跳跃 · ESC 退出鼠标控制</div>
+    <div id="help">W/A/S/D 移动 · 鼠标观察 · 滚轮缩放 · 双击复位 · Shift 加速 · Space 跳跃 · ESC 退出鼠标控制</div>
   </div>
 `;
 
@@ -26,7 +26,11 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xe4e1db);
 scene.fog = new THREE.Fog(0xe4e1db, 18, 34);
 
-const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.05, 80);
+const DEFAULT_FOV = 68;
+const MIN_FOV = 30;
+const MAX_FOV = 75;
+const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, window.innerWidth / window.innerHeight, 0.05, 80);
+let targetFov = DEFAULT_FOV;
 scene.add(camera);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -37,6 +41,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.02;
+renderer.domElement.style.touchAction = 'none';
 app.prepend(renderer.domElement);
 
 const controls = new PointerLockControls(camera, renderer.domElement);
@@ -47,6 +52,42 @@ const roomName = document.querySelector('#roomName');
 startButton.addEventListener('click', () => controls.lock());
 controls.addEventListener('lock', () => { overlay.classList.add('hidden'); status.textContent = '漫游中'; });
 controls.addEventListener('unlock', () => { overlay.classList.remove('hidden'); status.textContent = '已暂停'; });
+
+function setTargetFov(nextFov) {
+  targetFov = THREE.MathUtils.clamp(nextFov, MIN_FOV, MAX_FOV);
+}
+function resetFov() {
+  targetFov = DEFAULT_FOV;
+}
+renderer.domElement.addEventListener('wheel', (event) => {
+  event.preventDefault();
+  setTargetFov(targetFov + event.deltaY * 0.025);
+}, { passive: false });
+renderer.domElement.addEventListener('dblclick', (event) => {
+  event.preventDefault();
+  resetFov();
+});
+
+let pinchDistance = null;
+function touchDistance(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.hypot(dx, dy);
+}
+renderer.domElement.addEventListener('touchstart', (event) => {
+  if (event.touches.length === 2) pinchDistance = touchDistance(event.touches);
+}, { passive: false });
+renderer.domElement.addEventListener('touchmove', (event) => {
+  if (event.touches.length !== 2 || pinchDistance === null) return;
+  event.preventDefault();
+  const nextDistance = touchDistance(event.touches);
+  const delta = nextDistance - pinchDistance;
+  setTargetFov(targetFov - delta * 0.06);
+  pinchDistance = nextDistance;
+}, { passive: false });
+renderer.domElement.addEventListener('touchend', (event) => {
+  if (event.touches.length < 2) pinchDistance = null;
+});
 
 scene.add(new THREE.HemisphereLight(0xfffbf2, 0x72706c, 1.35));
 const sun = new THREE.DirectionalLight(0xffffff, 2.45);
@@ -284,6 +325,19 @@ function updatePlayer(dt) {
   roomLabelTimer += dt;
   if (roomLabelTimer > 0.15) { roomLabelTimer = 0; roomName.textContent = currentRoomName(); }
 }
-function animate() { requestAnimationFrame(animate); const dt = Math.min(clock.getDelta(), 0.05); updatePlayer(dt); renderer.render(scene, camera); }
+function updateZoom(dt) {
+  const nextFov = THREE.MathUtils.damp(camera.fov, targetFov, 11, dt);
+  if (Math.abs(nextFov - camera.fov) > 0.0001) {
+    camera.fov = nextFov;
+    camera.updateProjectionMatrix();
+  }
+}
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  updatePlayer(dt);
+  updateZoom(dt);
+  renderer.render(scene, camera);
+}
 animate();
 window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
