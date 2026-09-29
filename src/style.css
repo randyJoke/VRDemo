@@ -31,7 +31,7 @@ canvas { display: block; }
   position: absolute;
   left: 18px;
   bottom: 18px;
-  max-width: min(360px, calc(100vw - 36px));
+  max-width: min(420px, calc(100vw - 36px));
   padding: 12px 14px;
   border-radius: 12px;
   background: rgba(15,23,42,.72);
@@ -40,15 +40,18 @@ canvas { display: block; }
   line-height: 1.55;
 }
 
-#status {
+#status,
+#roomName {
   position: absolute;
-  right: 18px;
   top: 18px;
   padding: 9px 12px;
   border-radius: 999px;
   background: rgba(15,23,42,.72);
+  backdrop-filter: blur(10px);
   font-size: 12px;
 }
+#status { right: 18px; }
+#roomName { left: 18px; font-weight: 700; letter-spacing: .04em; }
 
 #startOverlay {
   position: fixed;
@@ -60,17 +63,26 @@ canvas { display: block; }
 }
 
 #startCard {
-  width: min(460px, calc(100vw - 32px));
-  padding: 28px;
+  width: min(500px, calc(100vw - 32px));
+  padding: 30px;
   border: 1px solid rgba(255,255,255,.12);
   border-radius: 18px;
-  background: rgba(15,23,42,.88);
+  background: rgba(15,23,42,.9);
   box-shadow: 0 24px 70px rgba(0,0,0,.35);
   text-align: center;
 }
 
+.eyebrow {
+  margin-bottom: 10px;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
 #startCard h1 { margin: 0 0 10px; font-size: 28px; }
 #startCard p { margin: 0 0 18px; color: #cbd5e1; line-height: 1.6; }
+.startTips { margin-top: 14px; color: #94a3b8; font-size: 12px; line-height: 1.6; }
 #startButton {
   border: 0;
   border-radius: 12px;
