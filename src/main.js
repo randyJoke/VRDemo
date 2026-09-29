@@ -1,29 +1,32 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { HOUSE, rooms, walls, furniture } from './floorplan.js';
 import './style.css';
 
 const app = document.querySelector('#app');
 app.innerHTML = `
   <div id="startOverlay">
     <div id="startCard">
-      <h1>3D 第一人称漫游</h1>
-      <p>点击进入场景后，使用 WASD 移动，鼠标控制视角，Shift 加速，空格跳跃，ESC 释放鼠标。</p>
-      <button id="startButton" type="button">进入场景</button>
+      <div class="eyebrow">C1 · 143㎡ · 四房两厅两卫</div>
+      <h1>户型 3D 第一人称漫游</h1>
+      <p>当前为根据户型图建立的第一版空间壳体。点击进入后可像游戏一样自由行走。</p>
+      <button id="startButton" type="button">进入户型</button>
+      <div class="startTips">W/A/S/D 移动 · 鼠标观察 · Shift 加速 · Space 跳跃 · ESC 暂停</div>
     </div>
   </div>
   <div id="hud">
     <div id="crosshair" aria-hidden="true"></div>
     <div id="status">未进入漫游</div>
+    <div id="roomName">玄关 / 公区</div>
     <div id="help">W/A/S/D 移动 · 鼠标观察 · Shift 加速 · Space 跳跃 · ESC 退出鼠标控制</div>
   </div>
 `;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xbfd7ea);
-scene.fog = new THREE.Fog(0xbfd7ea, 20, 42);
+scene.background = new THREE.Color(0xd8e3e8);
+scene.fog = new THREE.Fog(0xd8e3e8, 18, 36);
 
-const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 100);
-camera.position.set(-5.5, 1.65, 3.8);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 80);
 scene.add(camera);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -32,12 +35,15 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 app.prepend(renderer.domElement);
 
 const controls = new PointerLockControls(camera, renderer.domElement);
 const overlay = document.querySelector('#startOverlay');
 const startButton = document.querySelector('#startButton');
 const status = document.querySelector('#status');
+const roomName = document.querySelector('#roomName');
 
 startButton.addEventListener('click', () => controls.lock());
 controls.addEventListener('lock', () => {
@@ -49,131 +55,217 @@ controls.addEventListener('unlock', () => {
   status.textContent = '已暂停';
 });
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x6b7280, 2.0));
-
-const sun = new THREE.DirectionalLight(0xffffff, 3.2);
-sun.position.set(-6, 12, 4);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x7c8790, 1.9));
+const sun = new THREE.DirectionalLight(0xffffff, 3.0);
+sun.position.set(-7, 13, 5);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -15;
-sun.shadow.camera.right = 15;
-sun.shadow.camera.top = 15;
-sun.shadow.camera.bottom = -15;
+sun.shadow.camera.left = -12;
+sun.shadow.camera.right = 12;
+sun.shadow.camera.top = 12;
+sun.shadow.camera.bottom = -12;
 scene.add(sun);
 
-const warmLight = new THREE.PointLight(0xffe4bf, 35, 12, 2);
-warmLight.position.set(4, 2.5, 1);
-warmLight.castShadow = true;
-scene.add(warmLight);
+const ambientWarm = new THREE.PointLight(0xffead2, 24, 11, 2);
+ambientWarm.position.set(0, 2.45, 0);
+scene.add(ambientWarm);
 
 const colliders = [];
-const room = { width: 18, depth: 14, height: 3.2, wall: 0.22 };
+const wallMat = new THREE.MeshStandardMaterial({ color: 0xf3efe7, roughness: 0.92 });
+const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xf7f5ef, roughness: 1.0 });
+const floorMat = new THREE.MeshStandardMaterial({ color: 0xb8956e, roughness: 0.78 });
+const balconyMat = new THREE.MeshStandardMaterial({ color: 0xb9b7af, roughness: 0.9 });
 
-const mats = {
-  wall: new THREE.MeshStandardMaterial({ color: 0xf4f0e7, roughness: 0.9 }),
-  accent: new THREE.MeshStandardMaterial({ color: 0xb7a58d, roughness: 0.88 }),
-  floor: new THREE.MeshStandardMaterial({ color: 0xb7946a, roughness: 0.78 }),
-  dark: new THREE.MeshStandardMaterial({ color: 0x31363f, roughness: 0.72 }),
-  sofa: new THREE.MeshStandardMaterial({ color: 0x7f8c8d, roughness: 0.95 }),
-  wood: new THREE.MeshStandardMaterial({ color: 0x765640, roughness: 0.82 }),
-  plant: new THREE.MeshStandardMaterial({ color: 0x55745d, roughness: 0.9 }),
-};
-
-function addBox({ name = '', size, position, material = mats.wall, collide = true, castShadow = true }) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
-  mesh.name = name;
-  mesh.position.set(...position);
-  mesh.castShadow = castShadow;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
-  if (collide) {
-    colliders.push(new THREE.Box3().setFromObject(mesh));
-  }
-  return mesh;
+function worldX(planX) {
+  return planX - HOUSE.width / 2;
 }
 
-function addCylinder({ radius = 0.25, height = 1, position, material = mats.dark, collide = true }) {
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 24), material);
+function worldZ(planZ) {
+  return planZ - HOUSE.depth / 2;
+}
+
+function addBox({ size, position, material, collide = true, castShadow = true, name = '' }) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
   mesh.position.set(...position);
-  mesh.castShadow = true;
+  mesh.name = name;
+  mesh.castShadow = castShadow;
   mesh.receiveShadow = true;
   scene.add(mesh);
   if (collide) colliders.push(new THREE.Box3().setFromObject(mesh));
   return mesh;
 }
 
-// Floor and ceiling.
-addBox({ size: [room.width, 0.18, room.depth], position: [0, -0.09, 0], material: mats.floor, collide: false, castShadow: false });
-addBox({ size: [room.width, 0.12, room.depth], position: [0, room.height + 0.06, 0], material: mats.wall, collide: false, castShadow: false });
-
-// Outer walls.
-addBox({ size: [room.width, room.height, room.wall], position: [0, room.height / 2, -room.depth / 2], material: mats.wall });
-addBox({ size: [room.width, room.height, room.wall], position: [0, room.height / 2, room.depth / 2], material: mats.wall });
-addBox({ size: [room.wall, room.height, room.depth], position: [-room.width / 2, room.height / 2, 0], material: mats.wall });
-addBox({ size: [room.wall, room.height, room.depth], position: [room.width / 2, room.height / 2, 0], material: mats.wall });
-
-// Interior divider with a 1.5 m doorway.
-addBox({ size: [room.wall, room.height, 5.1], position: [0, room.height / 2, -4.45], material: mats.accent });
-addBox({ size: [room.wall, room.height, 4.4], position: [0, room.height / 2, 4.8], material: mats.accent });
-addBox({ size: [room.wall, 0.85, 1.5], position: [0, 2.775, -0.95], material: mats.accent });
-
-// Living zone: sofa, coffee table, TV cabinet.
-addBox({ size: [3.4, 0.72, 1.0], position: [-5.3, 0.36, -2.6], material: mats.sofa });
-addBox({ size: [3.4, 0.72, 0.28], position: [-5.3, 0.9, -3.0], material: mats.sofa });
-addBox({ size: [1.9, 0.42, 0.9], position: [-5.2, 0.21, -0.55], material: mats.wood });
-addBox({ size: [0.32, 0.58, 0.32], position: [-5.9, 0.29, -0.55], material: mats.dark });
-addBox({ size: [0.32, 0.58, 0.32], position: [-4.5, 0.29, -0.55], material: mats.dark });
-addBox({ size: [0.5, 0.58, 3.6], position: [-8.35, 0.29, -1.4], material: mats.dark });
-addBox({ size: [0.12, 1.65, 2.8], position: [-8.48, 1.55, -1.4], material: mats.dark, collide: false });
-
-// Dining zone.
-addBox({ size: [2.5, 0.12, 1.15], position: [4.1, 0.78, 1.5], material: mats.wood });
-addBox({ size: [0.18, 0.78, 0.18], position: [3.2, 0.39, 1.1], material: mats.dark });
-addBox({ size: [0.18, 0.78, 0.18], position: [5.0, 0.39, 1.1], material: mats.dark });
-addBox({ size: [0.18, 0.78, 0.18], position: [3.2, 0.39, 1.9], material: mats.dark });
-addBox({ size: [0.18, 0.78, 0.18], position: [5.0, 0.39, 1.9], material: mats.dark });
-
-for (const [x, z] of [[2.75, 0.55], [4.1, 0.55], [5.45, 0.55], [2.75, 2.45], [4.1, 2.45], [5.45, 2.45]]) {
-  addBox({ size: [0.52, 0.72, 0.52], position: [x, 0.36, z], material: mats.dark });
+function addWallPiece(axis, startX, startZ, length, material = wallMat) {
+  if (length <= 0.01) return;
+  if (axis === 'x') {
+    addBox({
+      size: [length, HOUSE.height, HOUSE.wall],
+      position: [worldX(startX + length / 2), HOUSE.height / 2, worldZ(startZ)],
+      material,
+      name: 'wall',
+    });
+  } else {
+    addBox({
+      size: [HOUSE.wall, HOUSE.height, length],
+      position: [worldX(startX), HOUSE.height / 2, worldZ(startZ + length / 2)],
+      material,
+      name: 'wall',
+    });
+  }
 }
 
-// Low cabinet and decorative plant.
-addBox({ size: [3.7, 0.82, 0.48], position: [6.4, 0.41, -5.95], material: mats.wood });
-addCylinder({ radius: 0.36, height: 0.48, position: [7.8, 0.24, 5.5], material: mats.dark });
-const plant = new THREE.Mesh(new THREE.SphereGeometry(0.7, 20, 14), mats.plant);
-plant.scale.y = 1.45;
-plant.position.set(7.8, 1.15, 5.5);
-plant.castShadow = true;
-scene.add(plant);
+function addDoorHeader(axis, startX, startZ, localStart, width) {
+  const headerHeight = HOUSE.height - HOUSE.doorHeight;
+  if (headerHeight <= 0) return;
+  const centerLocal = localStart + width / 2;
+  if (axis === 'x') {
+    addBox({
+      size: [width, headerHeight, HOUSE.wall],
+      position: [worldX(startX + centerLocal), HOUSE.doorHeight + headerHeight / 2, worldZ(startZ)],
+      material: wallMat,
+      name: 'door-header',
+    });
+  } else {
+    addBox({
+      size: [HOUSE.wall, headerHeight, width],
+      position: [worldX(startX), HOUSE.doorHeight + headerHeight / 2, worldZ(startZ + centerLocal)],
+      material: wallMat,
+      name: 'door-header',
+    });
+  }
+}
 
-// Rug adds visual orientation but no collision.
-addBox({ size: [4.6, 0.025, 3.2], position: [-5.1, 0.02, -1.55], material: new THREE.MeshStandardMaterial({ color: 0xd7d0c5, roughness: 1 }), collide: false, castShadow: false });
+function buildWall(wall) {
+  const openings = [...(wall.openings ?? [])]
+    .map((opening) => ({
+      start: Math.max(0, opening.center - opening.width / 2),
+      end: Math.min(wall.length, opening.center + opening.width / 2),
+    }))
+    .sort((a, b) => a.start - b.start);
+
+  let cursor = 0;
+  for (const opening of openings) {
+    addWallPiece(
+      wall.axis,
+      wall.axis === 'x' ? wall.x + cursor : wall.x,
+      wall.axis === 'z' ? wall.z + cursor : wall.z,
+      opening.start - cursor,
+    );
+    addDoorHeader(wall.axis, wall.x, wall.z, opening.start, opening.end - opening.start);
+    cursor = opening.end;
+  }
+
+  addWallPiece(
+    wall.axis,
+    wall.axis === 'x' ? wall.x + cursor : wall.x,
+    wall.axis === 'z' ? wall.z + cursor : wall.z,
+    wall.length - cursor,
+  );
+}
+
+// 全屋基础地面与天花。
+addBox({
+  size: [HOUSE.width, 0.16, HOUSE.depth],
+  position: [0, -0.08, 0],
+  material: floorMat,
+  collide: false,
+  castShadow: false,
+  name: 'floor',
+});
+addBox({
+  size: [HOUSE.width, 0.1, HOUSE.depth],
+  position: [0, HOUSE.height + 0.05, 0],
+  material: ceilingMat,
+  collide: false,
+  castShadow: false,
+  name: 'ceiling',
+});
+
+// 各功能空间铺装，用轻微高差帮助辨识户型。
+for (const room of rooms) {
+  const mat = new THREE.MeshStandardMaterial({ color: room.color, roughness: 0.92 });
+  addBox({
+    size: [room.w - 0.04, 0.025, room.d - 0.04],
+    position: [worldX(room.x + room.w / 2), 0.015, worldZ(room.z + room.d / 2)],
+    material: room.name.includes('阳台') ? balconyMat : mat,
+    collide: false,
+    castShadow: false,
+    name: `floor-${room.name}`,
+  });
+}
+
+for (const wall of walls) buildWall(wall);
+
+// 阳台栏杆的简化表达。
+const glassMat = new THREE.MeshPhysicalMaterial({
+  color: 0xc8d7dd,
+  transparent: true,
+  opacity: 0.38,
+  roughness: 0.15,
+  transmission: 0.28,
+});
+addBox({
+  size: [4.4, 1.05, 0.045],
+  position: [worldX(8.8), 0.72, worldZ(0.18)],
+  material: glassMat,
+  collide: true,
+  name: 'balcony-glass',
+});
+
+for (const item of furniture) {
+  const material = new THREE.MeshStandardMaterial({ color: item.color, roughness: 0.82 });
+  addBox({
+    size: [item.w, item.h, item.d],
+    position: [worldX(item.x + item.w / 2), item.h / 2, worldZ(item.z + item.d / 2)],
+    material,
+    collide: true,
+    name: item.name,
+  });
+}
+
+// 餐椅用几何体占位，后续可替换成 glTF 家具模型。
+const chairMat = new THREE.MeshStandardMaterial({ color: 0x4d4944, roughness: 0.8 });
+for (const [x, z] of [
+  [8.0, 5.9], [9.15, 5.9], [8.0, 7.35], [9.15, 7.35],
+]) {
+  addBox({
+    size: [0.48, 0.72, 0.48],
+    position: [worldX(x), 0.36, worldZ(z)],
+    material: chairMat,
+    name: '餐椅',
+  });
+}
+
+// 起点设在玄关附近，朝向客餐厅。
+const player = {
+  radius: 0.32,
+  eyeHeight: 1.65,
+  baseSpeed: 2.8,
+  sprintSpeed: 4.8,
+};
+camera.position.set(worldX(10.0), player.eyeHeight, worldZ(10.1));
+camera.rotation.set(0, Math.PI, 0);
 
 const keys = new Set();
+let verticalVelocity = 0;
+let onGround = true;
+
 window.addEventListener('keydown', (event) => {
-  if (["KeyW", "KeyA", "KeyS", "KeyD", "ShiftLeft", "ShiftRight", "Space"].includes(event.code)) event.preventDefault();
+  if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'Space'].includes(event.code)) {
+    event.preventDefault();
+  }
   keys.add(event.code);
   if (event.code === 'Space' && onGround && controls.isLocked) {
-    verticalVelocity = 4.8;
+    verticalVelocity = 4.6;
     onGround = false;
   }
 });
 window.addEventListener('keyup', (event) => keys.delete(event.code));
 window.addEventListener('blur', () => keys.clear());
 
-const player = {
-  radius: 0.34,
-  eyeHeight: 1.65,
-  baseSpeed: 3.2,
-  sprintSpeed: 5.4,
-};
-
-let verticalVelocity = 0;
-let onGround = true;
-
 function isBlocked(x, z) {
   const minY = camera.position.y - player.eyeHeight;
-  const maxY = camera.position.y + 0.15;
+  const maxY = camera.position.y + 0.12;
   for (const box of colliders) {
     if (maxY < box.min.y || minY > box.max.y) continue;
     if (
@@ -181,15 +273,29 @@ function isBlocked(x, z) {
       x - player.radius < box.max.x &&
       z + player.radius > box.min.z &&
       z - player.radius < box.max.z
-    ) return true;
+    ) {
+      return true;
+    }
   }
   return false;
+}
+
+function currentRoomName() {
+  const px = camera.position.x + HOUSE.width / 2;
+  const pz = camera.position.z + HOUSE.depth / 2;
+  for (const room of rooms) {
+    if (px >= room.x && px <= room.x + room.w && pz >= room.z && pz <= room.z + room.d) {
+      return room.name;
+    }
+  }
+  return '过道 / 公区';
 }
 
 const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
 const move = new THREE.Vector3();
 const clock = new THREE.Clock();
+let roomLabelTimer = 0;
 
 function updatePlayer(dt) {
   if (!controls.isLocked) return;
@@ -206,7 +312,8 @@ function updatePlayer(dt) {
   if (keys.has('KeyA')) move.sub(right);
 
   if (move.lengthSq() > 0) move.normalize();
-  const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? player.sprintSpeed : player.baseSpeed;
+  const sprinting = keys.has('ShiftLeft') || keys.has('ShiftRight');
+  const speed = sprinting ? player.sprintSpeed : player.baseSpeed;
   const dx = move.x * speed * dt;
   const dz = move.z * speed * dt;
 
@@ -222,6 +329,12 @@ function updatePlayer(dt) {
     camera.position.y = player.eyeHeight;
     verticalVelocity = 0;
     onGround = true;
+  }
+
+  roomLabelTimer += dt;
+  if (roomLabelTimer > 0.15) {
+    roomLabelTimer = 0;
+    roomName.textContent = currentRoomName();
   }
 }
 
